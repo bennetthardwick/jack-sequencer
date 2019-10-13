@@ -246,6 +246,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "hound"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "jack"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -264,6 +269,7 @@ dependencies = [
  "gdk 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gio 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gtk 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hound 3.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "jack 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -387,6 +393,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum gobject-sys 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "61d55bc9202447ca776f6ad0048c36e3312010f66f82ab478e97513e93f3604b"
 "checksum gtk 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "709f1074259d4685b96133f92b75c7f35b504715b0fcdc96ec95de2607296a60"
 "checksum gtk-sys 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bbd9395497ae1d1915d1d6e522d51ae8745bf613906c34ac191c411250fc4025"
+"checksum hound 3.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8a164bb2ceaeff4f42542bdb847c41517c78a60f5649671b2a07312b6e117549"
 "checksum jack 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "385739905427d1bdb561fa018a0a8e26fc023b7eeb975a1a0150512ff828f736"
 "checksum jack-sys 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c0d4ca501477fd3cd93a36df581046e5d6338ed826cf7e9b8d302603521e6cc3"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
