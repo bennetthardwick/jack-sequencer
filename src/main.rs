@@ -8,16 +8,22 @@ use jack::{AudioIn, AudioOut, Client, ClientOptions};
 use std::i16;
 
 const NUM_BARS: usize = 4;
-const BEATS_PER_BAR: usize = 8;
-const NUM_TRACKS: usize = 12;
+const BEATS_PER_BAR: usize = 4;
+const NUM_TRACKS: usize = 6;
 const DEFAULT_BPM: usize = 240;
 const NAME: &'static str = "rust_sequencer";
 const OUT_L: &'static str = "Left";
 const OUT_R: &'static str = "Right";
 
+#[derive(Clone)]
+struct Sample {
+    sample_rate: usize,
+    data: Vec<Vec<f32>>
+}
+
 enum Message {
     UpdateSequencer((usize, usize, bool)),
-    UpdateFile((usize, Vec<Vec<f32>>)),
+    UpdateFile((usize, Sample)),
     Play,
     Pause,
     Quit,
@@ -25,7 +31,7 @@ enum Message {
 
 #[derive(Clone)]
 struct State {
-    files: Vec<Option<Vec<Vec<f32>>>>,
+    files: Vec<Option<Sample>>,
     sequencer: Vec<Vec<bool>>,
     playing: bool,
     bpm: usize,
@@ -121,8 +127,9 @@ fn main() {
                         if let Ok(reader) = hound::WavReader::open(file) {
                             println!("Loading samples!");
                             let spec = reader.spec();
+                            let sample_rate = spec.sample_rate as usize;
                             let samples = reader.into_samples();
-                            let samples = samples
+                            let data = samples
                                 .map(|s| s.unwrap())
                                 .collect::<Vec<i16>>()
                                 .chunks(spec.channels as usize)
@@ -130,9 +137,9 @@ fn main() {
                                     x.iter().map(|y| (*y as f32) / (i16::MAX as f32)).collect()
                                 })
                                 .collect::<Vec<Vec<f32>>>();
-                            println!("File has {} samples... sending message!", samples.len());
+                            println!("File has {} samples... sending message!", data.len());
                             message_tx
-                                .send(Message::UpdateFile((track, samples)))
+                                .send(Message::UpdateFile((track, Sample { data, sample_rate })))
                                 .unwrap();
                         }
                     }
@@ -233,7 +240,7 @@ fn main() {
                     }
                 }) {
                     if state.sequencer[i][beat] {
-                        if let Some(t) = track.get(sample) {
+                        if let Some(t) = track.data.get((sample as f32 * (track.sample_rate as f32 / rate as f32)) as usize) {
                             if t.len() == 1 {
                                 *l += t[0];
                                 *r += t[0];
