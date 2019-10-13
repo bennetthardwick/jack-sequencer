@@ -202,6 +202,9 @@ fn main() {
                 Message::UpdateSequencer((track, beat, active)) => {
                     state.sequencer[track][beat] = active;
                 }
+                Message::Quit => {
+                    return;
+                },
                 _ => {
                     unimplemented!();
                 }
