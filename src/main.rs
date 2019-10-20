@@ -10,9 +10,9 @@ const NUM_BARS: usize = 4;
 const BEATS_PER_BAR: usize = 4;
 const NUM_TRACKS: usize = 20;
 const DEFAULT_BPM: usize = 240;
-const NAME: &'static str = "rust_sequencer";
-const OUT_L: &'static str = "Left";
-const OUT_R: &'static str = "Right";
+const NAME: &str = "rust_sequencer";
+const OUT_L: &str = "Left";
+const OUT_R: &str = "Right";
 
 #[derive(Clone)]
 struct State {
@@ -81,7 +81,7 @@ impl Iterator for Looper {
         let new_beats = self.sample / self.samples_for_beat;
         self.sample = remainder;
         self.beat += new_beats;
-        self.beat = self.beat % (BEATS_PER_BAR * NUM_BARS);
+        self.beat %= BEATS_PER_BAR * NUM_BARS;
 
         Some((self.beat, self.sample))
     }
