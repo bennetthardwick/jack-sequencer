@@ -8,7 +8,7 @@ use std::i16;
 
 const NUM_BARS: usize = 4;
 const BEATS_PER_BAR: usize = 4;
-const NUM_TRACKS: usize = 6;
+const NUM_TRACKS: usize = 20;
 const DEFAULT_BPM: usize = 240;
 const NAME: &'static str = "rust_sequencer";
 const OUT_L: &'static str = "Left";
@@ -286,45 +286,44 @@ fn main() {
             // Progress the song by the same number of samples that the buffer contains
             for ((l, r), (beat, sample)) in out_l.iter_mut().zip(out_r.iter_mut()).zip(&mut looper)
             {
-                // As above, set each output to 0 just to be sure nothing is left over.
-                *l = 0.;
-                *r = 0.;
-
                 // Loop through all the tracks and filter by those that have a sample loaded in.
                 // Note: it feels a little bit weird to be doing this for sample in the output
                 // buffer - but it seemed like the best way (at the time) to avoid allocating an
                 // intermediate Vec on the audio thread.
-                for (i, track) in state.files.iter().enumerate().filter_map(|(i, track)| {
-                    if let Some(track) = track {
-                        Some((i, track))
-                    } else {
-                        None
-                    }
-                }) {
-                    // Check whether we're at a beat. If we're not, do nothing.
-                    // Note: this should check whether there is a sample that is longer than
-                    // a single beat still playing. Currently it will get cut off as soon
-                    // as it reaches the next beat - I should fix that.
-                    if state.sequencer[i][beat] {
-                        if let Some(t) = track.data.get(
-                            // As samples can have a different sample rate to the sample rate that
-                            // audio is outputted, it's important to repeat previous samples
-                            // if the sample rate is slower or skip samples if it's faster.
-                            (sample as f32 * (track.sample_rate as f32 / rate as f32)) as usize,
-                        ) {
-                            // If the sample only has one channel, send it to both output channels
-                            // as mono. If it's got two or more, send the first two channels
-                            // to their respective buffers.
-                            if t.len() == 1 {
-                                *l += t[0];
-                                *r += t[0];
-                            } else if t.len() >= 2 {
-                                *l += t[0];
-                                *r += t[1];
+                let (t_l, t_r) = state
+                    .files
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, track)| {
+                        if let Some(track) = track {
+                            // Check whether we're at a beat. If we're not, do nothing.
+                            // Note: this should check whether there is a sample that is longer than
+                            // a single beat still playing. Currently it will get cut off as soon
+                            // as it reaches the next beat - I should fix that.
+
+                            if state.sequencer[i][beat] {
+                                if let Some(t) = track.data.get(
+                                    // As samples can have a different sample rate to the sample rate that
+                                    // audio is outputted, it's important to repeat previous samples
+                                    // if the sample rate is slower or skip samples if it's faster.
+                                    (sample as f32 * (track.sample_rate as f32 / rate as f32))
+                                        as usize,
+                                ) {
+                                    if t.len() == 1 {
+                                        return Some((t[0], t[0]));
+                                    } else if t.len() >= 2 {
+                                        return Some((t[0], t[1]));
+                                    }
+                                }
                             }
                         }
-                    }
-                }
+
+                        None
+                    })
+                    .fold((0., 0.), |(a1, a2), (b1, b2)| (a1 + b1, a2 + b2));
+
+                *l = t_l;
+                *r = t_r;
             }
 
             jack::Control::Continue
@@ -357,11 +356,11 @@ fn main() {
         .unwrap();
     active
         .as_client()
-        .connect_ports(&out_r_port, &system_out_1)
+        .connect_ports(&out_l_port, &system_out_1)
         .unwrap();
     active
         .as_client()
-        .connect_ports(&out_l_port, &system_out_2)
+        .connect_ports(&out_r_port, &system_out_2)
         .unwrap();
 
     // Start the GTK application. This locks the thread until
