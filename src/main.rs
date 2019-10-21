@@ -5,6 +5,7 @@ use gtk::prelude::*;
 use gtk::{Application, ApplicationWindowBuilder, WindowType};
 use jack::{AudioOut, Client, ClientOptions};
 use std::i16;
+use std::sync::Arc;
 
 const NUM_BARS: usize = 4;
 const BEATS_PER_BAR: usize = 4;
@@ -15,17 +16,59 @@ const OUT_L: &str = "Left";
 const OUT_R: &str = "Right";
 
 #[derive(Clone)]
+struct AudioTrack {
+    sample: Arc<Sample>,
+    playing: bool,
+    offset: usize,
+}
+
+impl AudioTrack {
+    fn new(sample: Arc<Sample>) -> AudioTrack {
+        AudioTrack { sample, playing: false, offset: 0 }
+    }
+
+    fn reset(&mut self) {
+        self.offset = 0;
+        self.playing = true;
+    }
+
+    fn progress(&mut self) -> (f32, f32) {
+        let output;
+
+        if self.playing && self.offset * self.sample.channels + self.sample.channels <= self.sample.data.len() {
+            if self.sample.channels == 1 {
+                output = (self.sample.data[self.offset], self.sample.data[self.offset])
+            } else if self.sample.channels >= 2 {
+                output = (
+                    self.sample.data[self.offset],
+                    self.sample.data[self.offset + 1],
+                );
+            } else {
+                output = (0., 0.);
+                self.playing = false;
+            }
+        } else {
+            self.playing = false;
+            output = (0., 0.);
+        }
+        self.offset += 1;
+        return output;
+    }
+}
+
+#[derive(Clone)]
 struct State {
-    files: Vec<Option<Sample>>,
-    sequencer: Vec<Vec<bool>>,
+    tracks: Vec<Option<AudioTrack>>,
     playing: bool,
     bpm: usize,
+    sequencer: [[bool; NUM_BARS * BEATS_PER_BAR]; NUM_TRACKS],
 }
 
 #[derive(Clone)]
 struct Sample {
     sample_rate: usize,
-    data: Vec<Vec<f32>>,
+    channels: usize,
+    data: Vec<f32>,
 }
 
 // Messages are information that gets sent
@@ -40,8 +83,8 @@ enum Message {
 impl State {
     fn new() -> State {
         State {
-            files: vec![None; NUM_TRACKS],
-            sequencer: vec![vec![false; BEATS_PER_BAR * NUM_BARS]; NUM_TRACKS],
+            tracks: vec![None; NUM_TRACKS],
+            sequencer: [[false; NUM_BARS * BEATS_PER_BAR]; NUM_TRACKS],
             playing: false,
             bpm: DEFAULT_BPM,
         }
@@ -161,17 +204,23 @@ fn main() {
                             let spec = reader.spec();
                             let sample_rate = spec.sample_rate as usize;
                             let samples = reader.into_samples();
+                            let channels = spec.channels as usize;
                             let data = samples
                                 .map(|s| s.unwrap())
                                 .collect::<Vec<i16>>()
-                                .chunks(spec.channels as usize)
-                                .map(|x| {
-                                    x.iter().map(|y| (*y as f32) / (i16::MAX as f32)).collect()
-                                })
-                                .collect::<Vec<Vec<f32>>>();
+                                .iter()
+                                .map(|y| (*y as f32) / (i16::MAX as f32))
+                                .collect::<Vec<f32>>();
                             println!("File has {} samples... sending message!", data.len());
                             message_tx
-                                .send(Message::UpdateFile((track, Sample { data, sample_rate })))
+                                .send(Message::UpdateFile((
+                                    track,
+                                    Sample {
+                                        data,
+                                        channels,
+                                        sample_rate,
+                                    },
+                                )))
                                 .unwrap();
                         }
                     }
@@ -226,8 +275,12 @@ fn main() {
 
         for message in message_rx.iter() {
             match message {
-                Message::UpdateFile((index, samples)) => {
-                    state.files[index] = Some(samples);
+                Message::UpdateFile((index, sample)) => {
+                    if let Some(track) = state.tracks[index].as_mut() {
+                        (*track).sample = Arc::new(sample);
+                    } else {
+                        state.tracks[index] = Some(AudioTrack::new(Arc::new(sample)));
+                    }
                 }
                 Message::UpdateSequencer((track, beat, active)) => {
                     state.sequencer[track][beat] = active;
@@ -290,36 +343,28 @@ fn main() {
                 // Note: it feels a little bit weird to be doing this for sample in the output
                 // buffer - but it seemed like the best way (at the time) to avoid allocating an
                 // intermediate Vec on the audio thread.
-                let (t_l, t_r) = state
-                    .files
-                    .iter()
+
+                let tracks = &mut (state.tracks);
+                let sequencer = &state.sequencer;
+
+                let (t_l, t_r) = tracks
+                    .iter_mut()
                     .enumerate()
                     .filter_map(|(i, track)| {
                         if let Some(track) = track {
-                            // Check whether we're at a beat. If we're not, do nothing.
-                            // Note: this should check whether there is a sample that is longer than
-                            // a single beat still playing. Currently it will get cut off as soon
-                            // as it reaches the next beat - I should fix that.
-
-                            if state.sequencer[i][beat] {
-                                if let Some(t) = track.data.get(
-                                    // As samples can have a different sample rate to the sample rate that
-                                    // audio is outputted, it's important to repeat previous samples
-                                    // if the sample rate is slower or skip samples if it's faster.
-                                    (sample as f32 * (track.sample_rate as f32 / rate as f32))
-                                        as usize,
-                                ) {
-                                    if t.len() == 1 {
-                                        return Some((t[0], t[0]));
-                                    } else if t.len() >= 2 {
-                                        return Some((t[0], t[1]));
-                                    }
-                                }
+                            // If at the very start of a beat for this track,
+                            // reset the sample.
+                            if sequencer[i][beat] && sample == 0 {
+                                track.reset();
                             }
+                            
+                            // Progress the sample and return the l and r samples
+                            return Some(track.progress());
                         }
 
                         None
                     })
+                    // Add together all the samples from each track
                     .fold((0., 0.), |(a1, a2), (b1, b2)| (a1 + b1, a2 + b2));
 
                 *l = t_l;
